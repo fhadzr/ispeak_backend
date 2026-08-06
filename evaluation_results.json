@@ -1,0 +1,345 @@
+{
+  "recall_at_1": 0.4375,
+  "recall_at_3": 0.75,
+  "recall_at_5": 0.75,
+  "total_queries": 16,
+  "total_chunks": 94,
+  "per_query_results": [
+    {
+      "query": "CEFR B1 speaking fluency descriptor can-do statements",
+      "expected_doc_type": "cefr_descriptor",
+      "retrieved_doc_types": [
+        "cefr_descriptor",
+        "cefr_descriptor",
+        "cefr_descriptor",
+        "cefr_descriptor",
+        "cefr_descriptor"
+      ],
+      "similarity_scores": [
+        0.901,
+        0.901,
+        0.897,
+        0.896,
+        0.893
+      ],
+      "top_1_hit": true,
+      "top_3_hit": true,
+      "top_5_hit": true
+    },
+    {
+      "query": "CEFR A2 speaking accuracy grammar scope",
+      "expected_doc_type": "cefr_descriptor",
+      "retrieved_doc_types": [
+        "learning_path",
+        "cefr_descriptor",
+        "cefr_descriptor",
+        "learning_path",
+        "cefr_descriptor"
+      ],
+      "similarity_scores": [
+        0.889,
+        0.886,
+        0.885,
+        0.877,
+        0.875
+      ],
+      "top_1_hit": false,
+      "top_3_hit": true,
+      "top_5_hit": true
+    },
+    {
+      "query": "CEFR B2 speaking complexity lexical range",
+      "expected_doc_type": "cefr_descriptor",
+      "retrieved_doc_types": [
+        "cefr_descriptor",
+        "learning_path",
+        "cefr_descriptor",
+        "learning_path",
+        "cefr_descriptor"
+      ],
+      "similarity_scores": [
+        0.894,
+        0.894,
+        0.892,
+        0.889,
+        0.871
+      ],
+      "top_1_hit": true,
+      "top_3_hit": true,
+      "top_5_hit": true
+    },
+    {
+      "query": "Indonesian English learner common pronunciation errors",
+      "expected_doc_type": "l1_error",
+      "retrieved_doc_types": [
+        "cefr_descriptor",
+        "l1_error",
+        "cefr_descriptor",
+        "cefr_descriptor",
+        "l1_error"
+      ],
+      "similarity_scores": [
+        0.895,
+        0.894,
+        0.893,
+        0.893,
+        0.89
+      ],
+      "top_1_hit": false,
+      "top_3_hit": true,
+      "top_5_hit": true
+    },
+    {
+      "query": "Indonesian speaker /v/ /f/ phoneme substitution English",
+      "expected_doc_type": "l1_error",
+      "retrieved_doc_types": [
+        "l1_error",
+        "l1_error",
+        "l1_error",
+        "l1_error",
+        "l1_error"
+      ],
+      "similarity_scores": [
+        0.933,
+        0.899,
+        0.898,
+        0.898,
+        0.892
+      ],
+      "top_1_hit": true,
+      "top_3_hit": true,
+      "top_5_hit": true
+    },
+    {
+      "query": "consonant final deletion Indonesian accent English",
+      "expected_doc_type": "l1_error",
+      "retrieved_doc_types": [
+        "l1_error",
+        "l1_error",
+        "l1_error",
+        "l1_error",
+        "l1_error"
+      ],
+      "similarity_scores": [
+        0.926,
+        0.892,
+        0.891,
+        0.889,
+        0.885
+      ],
+      "top_1_hit": true,
+      "top_3_hit": true,
+      "top_5_hit": true
+    },
+    {
+      "query": "Oxford 5000 advanced vocabulary B1 level word list",
+      "expected_doc_type": "vocabulary",
+      "retrieved_doc_types": [
+        "cefr_descriptor",
+        "cefr_descriptor",
+        "vocabulary",
+        "vocabulary",
+        "vocabulary"
+      ],
+      "similarity_scores": [
+        0.897,
+        0.893,
+        0.891,
+        0.887,
+        0.881
+      ],
+      "top_1_hit": false,
+      "top_3_hit": true,
+      "top_5_hit": true
+    },
+    {
+      "query": "Academic Word List AWL academic English vocabulary",
+      "expected_doc_type": "vocabulary",
+      "retrieved_doc_types": [
+        "vocabulary",
+        "cefr_descriptor",
+        "cefr_descriptor",
+        "cefr_descriptor",
+        "vocabulary"
+      ],
+      "similarity_scores": [
+        0.893,
+        0.889,
+        0.886,
+        0.874,
+        0.868
+      ],
+      "top_1_hit": true,
+      "top_3_hit": true,
+      "top_5_hit": true
+    },
+    {
+      "query": "English stress rules word stress patterns Indonesian learner",
+      "expected_doc_type": "pronunciation",
+      "retrieved_doc_types": [
+        "l1_error",
+        "l1_error",
+        "pronunciation",
+        "l1_error",
+        "pronunciation"
+      ],
+      "similarity_scores": [
+        0.908,
+        0.894,
+        0.893,
+        0.89,
+        0.888
+      ],
+      "top_1_hit": false,
+      "top_3_hit": true,
+      "top_5_hit": true
+    },
+    {
+      "query": "English intonation patterns flat speech remediation",
+      "expected_doc_type": "pronunciation",
+      "retrieved_doc_types": [
+        "l1_error",
+        "l1_error",
+        "l1_error",
+        "l1_error",
+        "l1_error"
+      ],
+      "similarity_scores": [
+        0.899,
+        0.889,
+        0.869,
+        0.855,
+        0.855
+      ],
+      "top_1_hit": false,
+      "top_3_hit": false,
+      "top_5_hit": false
+    },
+    {
+      "query": "connected speech English pronunciation rules",
+      "expected_doc_type": "pronunciation",
+      "retrieved_doc_types": [
+        "pronunciation",
+        "l1_error",
+        "pronunciation",
+        "l1_error",
+        "l1_error"
+      ],
+      "similarity_scores": [
+        0.865,
+        0.858,
+        0.855,
+        0.854,
+        0.854
+      ],
+      "top_1_hit": true,
+      "top_3_hit": true,
+      "top_5_hit": true
+    },
+    {
+      "query": "B1 to B2 speaking learning path weekly plan",
+      "expected_doc_type": "learning_path",
+      "retrieved_doc_types": [
+        "cefr_descriptor",
+        "vocabulary",
+        "learning_path",
+        "cefr_descriptor",
+        "learning_path"
+      ],
+      "similarity_scores": [
+        0.895,
+        0.884,
+        0.883,
+        0.88,
+        0.876
+      ],
+      "top_1_hit": false,
+      "top_3_hit": true,
+      "top_5_hit": true
+    },
+    {
+      "query": "A2 to B1 pronunciation improvement exercises weekly",
+      "expected_doc_type": "learning_path",
+      "retrieved_doc_types": [
+        "cefr_descriptor",
+        "l1_error",
+        "l1_error",
+        "l1_error",
+        "cefr_descriptor"
+      ],
+      "similarity_scores": [
+        0.89,
+        0.887,
+        0.88,
+        0.879,
+        0.871
+      ],
+      "top_1_hit": false,
+      "top_3_hit": false,
+      "top_5_hit": false
+    },
+    {
+      "query": "speaking fluency drills exercises intermediate learner",
+      "expected_doc_type": "learning_path",
+      "retrieved_doc_types": [
+        "cefr_descriptor",
+        "cefr_descriptor",
+        "l1_error",
+        "l1_error",
+        "l1_error"
+      ],
+      "similarity_scores": [
+        0.884,
+        0.883,
+        0.879,
+        0.877,
+        0.877
+      ],
+      "top_1_hit": false,
+      "top_3_hit": false,
+      "top_5_hit": false
+    },
+    {
+      "query": "grammar error correction B1 CEFR Indonesian speaker transition B2",
+      "expected_doc_type": "cefr_descriptor",
+      "retrieved_doc_types": [
+        "cefr_descriptor",
+        "cefr_descriptor",
+        "cefr_descriptor",
+        "l1_error",
+        "l1_error"
+      ],
+      "similarity_scores": [
+        0.926,
+        0.925,
+        0.923,
+        0.91,
+        0.909
+      ],
+      "top_1_hit": true,
+      "top_3_hit": true,
+      "top_5_hit": true
+    },
+    {
+      "query": "silent pause reduction speaking fluency A2 exercises",
+      "expected_doc_type": "learning_path",
+      "retrieved_doc_types": [
+        "cefr_descriptor",
+        "cefr_descriptor",
+        "cefr_descriptor",
+        "cefr_descriptor",
+        "l1_error"
+      ],
+      "similarity_scores": [
+        0.898,
+        0.891,
+        0.887,
+        0.883,
+        0.883
+      ],
+      "top_1_hit": false,
+      "top_3_hit": false,
+      "top_5_hit": false
+    }
+  ]
+}

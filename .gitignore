@@ -1,0 +1,45 @@
+# ─── Python ───────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# ─── Virtualenv ───────────────────────────────────────────
+venv/
+.venv/
+env/
+
+# ─── Secrets ──────────────────────────────────────────────
+.env
+.env.local
+*.pem
+
+# ─── Runtime artifacts ────────────────────────────────────
+tmp/
+logs/
+*.log
+
+# ─── Audio & data uploads ─────────────────────────────────
+*.wav
+*.mp3
+*.m4a
+*.ogg
+*.webm
+data/
+
+# ─── Model backups (not needed in repo) ───────────────────
+models_backup/
+
+# ─── Stray folders ────────────────────────────────────────
+~/
+
+# ─── IDE / OS ─────────────────────────────────────────────
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# ─── Frontend build (demo is single-file, keep index.html) ─
+frontend/node_modules/
