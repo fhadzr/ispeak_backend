@@ -1,17 +1,19 @@
-from contextlib import asynccontextmanager
 import logging
+import uuid
+from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from app.api.v1.routes.assess import router as assess_router
 from app.api.v1.routes.analyze import router as analyze_router
 from app.api.v1.routes.feedback import router as feedback_router
 from app.core.config import get_settings
+from app.core.security import APIKeyAuthMiddleware, RateLimitMiddleware
 
 settings = get_settings()
 
-# ─── Logging ─────────────────────────────────────────────────────────────────
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
@@ -19,13 +21,16 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-# ─── Lifespan: preload models saat startup ──────────────────────────────────
+# ─── Lifespan: validate config + preload models ──────────────────────────────
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """
-    Dijalankan saat server startup dan shutdown.
-    Preload semua model keras agar request pertama tidak lambat.
-    """
+    # Fail fast on unsafe production configuration (missing secrets, mock mode).
+    try:
+        settings.validate_for_startup()
+    except RuntimeError as exc:
+        logger.critical("Configuration error: %s", exc)
+        raise
+
     logger.info("=== Server startup: memuat model i-Speak ===")
     try:
         from app.services.ispeak.model_inference import model_loader
@@ -33,14 +38,13 @@ async def lifespan(app: FastAPI):
         model_loader.load_all()
         logger.info("=== Semua model i-Speak berhasil dimuat ===")
     except Exception as e:
-        logger.error(f"Gagal memuat model i-Speak: {e}", exc_info=True)
+        logger.error("Gagal memuat model i-Speak: %s", e, exc_info=True)
         logger.warning(
             "Server tetap berjalan, tapi endpoint /analyze mungkin tidak berfungsi"
         )
 
-    yield  # Server berjalan di sini
+    yield
 
-    # Cleanup saat shutdown (opsional)
     logger.info("Server shutdown.")
 
 
@@ -54,40 +58,69 @@ app = FastAPI(
         "untuk menghasilkan feedback pembelajaran yang adaptif."
     ),
     lifespan=lifespan,
-    docs_url="/docs",
-    redoc_url="/redoc",
+    # Documentation is disabled in production to avoid exposing the API surface.
+    docs_url="/docs" if settings.docs_enabled else None,
+    redoc_url="/redoc" if settings.docs_enabled else None,
+    openapi_url="/openapi.json" if settings.docs_enabled else None,
 )
 
+
 # ─── CORS ────────────────────────────────────────────────────────────────────
+# Restrictive by default; no wildcard; credentials off (auth is via header, not
+# cookies). See settings.cors_origins.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Ganti dengan domain frontend di produksi
-    allow_credentials=True,
+    allow_origins=settings.cors_origins,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
+# Registered after CORS so they run outermost (Starlette applies middleware in
+# reverse order of registration).
+app.add_middleware(RateLimitMiddleware)
+app.add_middleware(APIKeyAuthMiddleware)
+
+
 # ─── Routers ─────────────────────────────────────────────────────────────────
-app.include_router(
-    analyze_router,
-    prefix="/api/v1",
-    tags=["i-Speak Model"],
-)
-
-app.include_router(
-    assess_router,
-    prefix="/api/v1",
-    tags=["RAG Assessment"],
-)
-
-app.include_router(
-    feedback_router,
-    prefix="/api/v1",
-    tags=["Feedback"],
-)
+app.include_router(analyze_router, prefix="/api/v1", tags=["i-Speak Model"])
+app.include_router(assess_router, prefix="/api/v1", tags=["RAG Assessment"])
+app.include_router(feedback_router, prefix="/api/v1", tags=["Feedback"])
 
 
-# ─── Health check ─────────────────────────────────────────────────────────────
+# ─── Global exception handlers ───────────────────────────────────────────────
+# Never return internal exception text or tracebacks to clients. Details are
+# logged server-side; the client gets a generic message plus a correlation id.
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception):
+    request_id = getattr(request.state, "request_id", None) or str(uuid.uuid4())
+    logger.exception(
+        "Unhandled error | request_id=%s | path=%s | error=%s",
+        request_id,
+        request.url.path,
+        exc,
+    )
+    return JSONResponse(
+        status_code=500,
+        content={
+            "success": False,
+            "error": "Internal server error.",
+            "request_id": request_id,
+        },
+    )
+
+
+@app.middleware("http")
+async def request_id_middleware(request: Request, call_next):
+    """Attach a correlation id to every request and response."""
+    request_id = request.headers.get("X-Request-ID") or str(uuid.uuid4())
+    request.state.request_id = request_id
+    response = await call_next(request)
+    response.headers["X-Request-ID"] = request_id
+    return response
+
+
+# ─── Health check ────────────────────────────────────────────────────────────
 @app.get("/", tags=["Health"])
 async def root():
     return {
@@ -95,15 +128,12 @@ async def root():
         "version": "2.0.0",
         "status": "running",
         "env": settings.app_env,
-        "llm_backend": "ollama" if settings.use_local_llm else "dashscope",
-        "embedding_model": settings.embedding_model,
+        "llm_backend": "groq",
         "endpoints": {
             "POST /api/v1/analyze": "Upload audio → prediksi 7 sub-construct CEFR",
             "GET  /api/v1/analyze/health": "Cek status model i-Speak",
             "POST /api/v1/assess": "ISpeakOutput JSON → feedback RAG",
-            "GET  /api/v1/assess/mock": "Mock ISpeakOutput untuk testing frontend",
-            "GET  /api/v1/feedback": "Endpoint feedback (sesuai isi feedback.py)",
-            "GET  /api/v1/feedback/history": "Riwayat semua sesi feedback",
+            "GET  /api/v1/feedback/history": "Riwayat sesi feedback",
             "GET  /api/v1/feedback/{session_id}": "Detail satu sesi feedback",
             "POST /api/v1/feedback/{session_id}/rating": "Simpan rating pengguna",
             "GET  /api/v1/feedback/stats/summary": "Statistik agregat feedback",
@@ -113,9 +143,4 @@ async def root():
 
 @app.get("/health", tags=["Health"])
 async def health():
-    return {
-        "status": "ok",
-        "env": settings.app_env,
-        "llm_backend": "ollama" if settings.use_local_llm else "dashscope",
-        "embedding_model": settings.embedding_model,
-    }
+    return {"status": "ok", "env": settings.app_env}

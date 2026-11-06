@@ -13,8 +13,15 @@ env/
 
 # ─── Secrets ──────────────────────────────────────────────
 .env
-.env.local
+.env.*
+!.env.example
 *.pem
+*.key
+*.p12
+*.pem
+
+# ─── Copyrighted source documents (processed into knowledge_base/) ──
+raw_docs/
 
 # ─── Runtime artifacts ────────────────────────────────────
 tmp/

@@ -150,6 +150,10 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--reset", action="store_true",
                         help="Hapus semua data lama sebelum indexing")
+    parser.add_argument("--yes", action="store_true",
+                        help="Konfirmasi operasi destruktif (wajib bersama --reset)")
+    parser.add_argument("--allow-production", action="store_true",
+                        help="Izinkan --reset terhadap URL yang tampak production (berbahaya)")
     parser.add_argument("--file", type=str, default=None,
                         help="Index hanya file tertentu (nama file saja, bukan path)")
     args = parser.parse_args()
@@ -163,7 +167,31 @@ def main():
     supabase  = create_client(SUPABASE_URL, SUPABASE_KEY)
 
     if args.reset:
-        logger.warning("RESET: Menghapus semua data di tabel documents...")
+        _looks_production = (
+            "supabase.co" in SUPABASE_URL
+            and not any(t in SUPABASE_URL for t in ("localhost", "127.0.0.1", "127.0.0.1"))
+            and not SUPABASE_URL.endswith(".supabase.co/")
+        )
+        if _looks_production and not args.allow_production:
+            logger.error(
+                "RESET ditolak: target %s tampak seperti environment production. "
+                "Gunakan --allow-production untuk memaksa.",
+                SUPABASE_URL,
+            )
+            sys.exit(1)
+        if not args.yes:
+            logger.error(
+                "Operasi --reset bersifat DESTRUCTIF (menghapus SEMUA baris di "
+                "tabel documents). Jalankan ulang dengan --reset --yes untuk "
+                "mengonfirmasi. Target: %s",
+                SUPABASE_URL,
+            )
+            sys.exit(1)
+
+        logger.warning(
+            "RESET: Menghapus semua data di tabel documents pada %s ...",
+            SUPABASE_URL,
+        )
         supabase.table("documents").delete().neq(
             "id", "00000000-0000-0000-0000-000000000000"
         ).execute()

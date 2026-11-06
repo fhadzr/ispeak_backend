@@ -1517,6 +1517,23 @@
         return `sc-bar-fill-${level.toLowerCase()}`;
       }
 
+      // ── Safe DOM helpers: dynamic values are set via textContent only ──
+      function el(tag, className, text) {
+        const node = document.createElement(tag);
+        if (className) node.className = className;
+        if (text !== undefined && text !== null && text !== "") node.textContent = text;
+        return node;
+      }
+      function toPercent(conf) {
+        if (typeof conf !== "number" || isNaN(conf)) return 0;
+        return conf <= 1 ? conf * 100 : conf;
+      }
+      function emptyState(icon, message) {
+        const wrap = el("div", "empty-state");
+        wrap.append(el("div", "empty-icon", icon), el("p", "", message));
+        return wrap;
+      }
+
       // ════════════════════════════════════════════
       // VIEW / TRANSITION MANAGEMENT
       // ════════════════════════════════════════════
@@ -1526,7 +1543,13 @@
         window.scrollTo({ top: 0, behavior: 'smooth' });
       }
 
-      function showSubconstructDetails(name, level, confidence, feedback, exercise, isGap) {
+      function showSubconstructDetails(sc) {
+        const name = sc.name || "";
+        const level = sc.cefr_level || "";
+        const confidence = toPercent(sc.confidence);
+        const feedback = sc.short_feedback || "";
+        const exercise = sc.priority_exercise || "";
+        const isGap = !!sc.is_gap;
         document.getElementById("modalTitle").innerText = name;
         
         const badge = document.getElementById("modalLevelBadge");
@@ -1576,126 +1599,137 @@
       // ════════════════════════════════════════════
       // RENDER FUNCTIONS
       // ════════════════════════════════════════════
+
       function renderOverall(data) {
         const overall = data.overall_cefr || "—";
         const justification = data.cefr_assessment?.justification || "";
-        
-        // Set header badge
         document.getElementById("dbOverallBadge").innerText = `Overall CEFR: Level ${overall}`;
-        
-        document.getElementById("overallSection").innerHTML = `
-          <div class="cefr-hero">
-            <div class="level-circle">${overall}</div>
-            <div class="level-info">
-              <div class="level-label">Overall CEFR Level</div>
-              <div class="level-value">Level ${overall}</div>
-              <div class="level-desc">${cefrDesc[overall] || justification}</div>
-            </div>
-          </div>
-        `;
+
+        const section = document.getElementById("overallSection");
+        section.replaceChildren();
+        const hero = el("div", "cefr-hero");
+        const circle = el("div", "level-circle", overall);
+        const info = el("div", "level-info");
+        const label = el("div", "level-label", "Overall CEFR Level");
+        const value = el("div", "level-value", "Level " + overall);
+        const desc = el("div", "level-desc", cefrDesc[overall] || justification);
+        info.append(label, value, desc);
+        hero.append(circle, info);
+        section.append(hero);
       }
 
       function renderSubconstructs(data) {
         const scs = data.sub_construct_summary || [];
         const container = document.getElementById("subconstructSection");
-        container.innerHTML = scs.map(sc => {
-          const isGap = sc.is_gap;
-          const level = sc.cefr_level;
+        container.replaceChildren();
+        scs.forEach(function (sc) {
+          const isGap = !!sc.is_gap;
+          const level = sc.cefr_level || "";
+          const conf = toPercent(sc.confidence);
 
-          let conf = sc.confidence;
-          if (conf > 1) conf = conf;
-          else conf = conf * 100;
+          const card = el("div", "sc-card-compact" + (isGap ? " gap" : ""));
+          card.addEventListener("click", function () { showSubconstructDetails(sc); });
 
-          // Safely escape values for event handlers
-          const escapedName = (sc.name || "").replace(/'/g, "\\'");
-          const escapedFeedback = (sc.short_feedback || "").replace(/'/g, "\\'").replace(/"/g, '&quot;');
-          const escapedExercise = (sc.priority_exercise || "").replace(/'/g, "\\'").replace(/"/g, '&quot;');
+          const header = el("div", "sc-header");
+          const nameSpan = el("span", "sc-name", sc.name || "");
+          nameSpan.title = sc.name || "";
+          const badge = el("span", "sc-badge " + getBadgeClass(level), level);
+          header.append(nameSpan, badge);
 
-          return `
-            <div class="sc-card-compact ${isGap ? 'gap' : ''}" onclick="showSubconstructDetails('${escapedName}', '${level}', ${conf}, '${escapedFeedback}', '${escapedExercise}', ${isGap})">
-              <div class="sc-header">
-                <span class="sc-name" title="${sc.name}">${sc.name}</span>
-                <span class="sc-badge ${getBadgeClass(level)}">${level}</span>
-              </div>
-              <div class="sc-bar">
-                <div class="sc-bar-fill ${getBarClass(level)}"></div>
-              </div>
-              <div class="sc-footer">
-                <span class="sc-confidence">Conf: ${conf.toFixed(1)}%</span>
-                <button class="sc-detail-btn">🔍 Detail</button>
-              </div>
-            </div>
-          `;
-        }).join("");
+          const bar = el("div", "sc-bar");
+          const fill = el("div", "sc-bar-fill " + getBarClass(level));
+          bar.append(fill);
+
+          const footer = el("div", "sc-footer");
+          const confSpan = el("span", "sc-confidence", "Conf: " + conf.toFixed(1) + "%");
+          const btn = el("button", "sc-detail-btn", "🔍 Detail");
+          btn.type = "button";
+          footer.append(confSpan, btn);
+
+          card.append(header, bar, footer);
+          container.append(card);
+        });
       }
 
       function renderCorrections(data) {
         const corrections = data.priority_corrections || [];
         const container = document.getElementById("correctionSection");
+        container.replaceChildren();
         if (!corrections.length) {
-          container.innerHTML = `<div class="empty-state"><div class="empty-icon">✅</div><p>Tidak ada gap yang perlu dikoreksi.</p></div>`;
+          container.append(emptyState("✅", "Tidak ada gap yang perlu dikoreksi."));
           return;
         }
-        container.innerHTML = corrections.map(c => `
-          <div class="correction-item">
-            <div class="rank">${c.rank}</div>
-            <div class="corr-body">
-              <div class="corr-title">${c.sub_skill}</div>
-              <div class="corr-meta">${c.current_level} → ${c.target_level}</div>
-              <div class="corr-desc">${c.explanation}</div>
-              <div class="exercise-tags">
-                ${(c.exercises || []).map(ex => `<span class="ex-tag">${ex}</span>`).join("")}
-              </div>
-              <div class="sessions">⏱️ Estimasi: ${c.estimated_sessions} sesi</div>
-            </div>
-          </div>
-        `).join("");
+        corrections.forEach(function (c) {
+          const item = el("div", "correction-item");
+          const rank = el("div", "rank", String(c.rank ?? ""));
+          const body = el("div", "corr-body");
+          const title = el("div", "corr-title", c.sub_skill || "");
+          const meta = el("div", "corr-meta", (c.current_level || "") + " → " + (c.target_level || ""));
+          const desc = el("div", "corr-desc", c.explanation || "");
+          const tags = el("div", "exercise-tags");
+          (c.exercises || []).forEach(function (ex) { tags.append(el("span", "ex-tag", ex)); });
+          const sessions = el("div", "sessions", "⏱️ Estimasi: " + c.estimated_sessions + " sesi");
+          body.append(title, meta, desc, tags, sessions);
+          item.append(rank, body);
+          container.append(item);
+        });
       }
 
       function renderLearningPath(data) {
         const weeks = data.learning_path?.weekly_plan || [];
         const container = document.getElementById("learningPathSection");
+        container.replaceChildren();
         if (!weeks.length) {
-          container.innerHTML = `<div class="empty-state"><div class="empty-icon">📅</div><p>Belum ada rencana pembelajaran.</p></div>`;
+          container.append(emptyState("📅", "Belum ada rencana pembelajaran."));
           return;
         }
-        container.innerHTML = weeks.map(w => `
-          <div class="week-card">
-            <div class="week-header">
-              <span class="week-num">Minggu ${w.week}</span>
-              <span class="week-focus">${w.focus}</span>
-            </div>
-            <div class="task-list">
-              ${(w.daily_tasks || []).map(t => `
-                <div class="task-item">
-                  <span class="task-day">${t.day}</span>
-                  <span class="task-desc">${t.description}</span>
-                  <span class="task-dur">${t.duration_minutes} min</span>
-                </div>
-              `).join("")}
-            </div>
-          </div>
-        `).join("");
+        weeks.forEach(function (w) {
+          const card = el("div", "week-card");
+          const header = el("div", "week-header");
+          const num = el("span", "week-num", "Minggu " + w.week);
+          const focus = el("span", "week-focus", w.focus || "");
+          header.append(num, focus);
+          const list = el("div", "task-list");
+          (w.daily_tasks || []).forEach(function (t) {
+            const task = el("div", "task-item");
+            const day = el("span", "task-day", t.day || "");
+            const desc = el("span", "task-desc", t.description || "");
+            const dur = el("span", "task-dur", t.duration_minutes + " min");
+            task.append(day, desc, dur);
+            list.append(task);
+          });
+          card.append(header, list);
+          container.append(card);
+        });
       }
 
       function renderAction(data) {
         const action = data.top_priority_action || "—";
-        document.getElementById("actionSection").innerHTML = `
-          <div class="action-card" style="padding: 12px;">
-            <span class="action-icon">🚀</span>
-            <div class="action-body">
-              <div class="action-label" style="font-size: 0.7rem; margin-bottom: 2px;">Aksi Prioritas Hari Ini</div>
-              <div class="action-text" style="font-size: 0.9rem;">${action}</div>
-            </div>
-          </div>
-        `;
+        const section = document.getElementById("actionSection");
+        section.replaceChildren();
+        const card = el("div", "action-card");
+        card.style.padding = "12px";
+        const icon = el("span", "action-icon", "🚀");
+        const body = el("div", "action-body");
+        const label = el("div", "action-label", "Aksi Prioritas Hari Ini");
+        label.style.fontSize = "0.7rem";
+        label.style.marginBottom = "2px";
+        const text = el("div", "action-text", action);
+        text.style.fontSize = "0.9rem";
+        body.append(label, text);
+        card.append(icon, body);
+        section.append(card);
       }
 
       function renderPlainSummary(data) {
         const summary = data.plain_summary || "—";
-        document.getElementById("plainSummarySection").innerHTML = `
-          <div class="plain-summary" style="padding: 12px; font-size: 0.85rem; line-height: 1.5;">${summary}</div>
-        `;
+        const section = document.getElementById("plainSummarySection");
+        section.replaceChildren();
+        const box = el("div", "plain-summary", summary);
+        box.style.padding = "12px";
+        box.style.fontSize = "0.85rem";
+        box.style.lineHeight = "1.5";
+        section.append(box);
       }
 
       // ════════════════════════════════════════════

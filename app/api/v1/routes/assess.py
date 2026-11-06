@@ -5,16 +5,16 @@ Output : FeedbackResponse (diagnostic feedback + learning path)
 """
 
 import logging
-from fastapi import APIRouter, HTTPException
 
-from app.models.schemas import ISpeakOutput, FeedbackResponse, APIResponse
-from app.services.diagnostic import build_diagnostic_profile
+from fastapi import APIRouter, Depends, HTTPException, status
+
+from app.core.security import Requester, require_api_key
 from app.models.schemas import ISpeakOutput, APIResponse
 from app.services.diagnostic import build_diagnostic_profile
 from app.services.rag_pipeline import (
-    retrieve_all,
+    RetrievalError,
     format_context_for_prompt,
-    get_source_list,
+    retrieve_all,
 )
 from app.services.llm_engine import run_full_diagnosis
 from app.api.v1.routes.feedback import _save_session
@@ -37,47 +37,41 @@ router = APIRouter()
     Topic_Relevance, Complexity, Accuracy
     """,
 )
-async def assess(ispeak_output: ISpeakOutput) -> APIResponse:
+async def assess(
+    ispeak_output: ISpeakOutput,
+    requester: Requester = Depends(require_api_key),
+) -> APIResponse:
     try:
         kf = ispeak_output.key_features
-        sc_summary = {
-            sc.name: sc.cefr_level.value for sc in ispeak_output.subconstructs
-        }
+        sc_summary = {sc.name: sc.cefr_level.value for sc in ispeak_output.subconstructs}
 
         logger.info(
-            f"New assessment | task={ispeak_output.task_type} | "
-            f"wpm={kf.wpm:.1f} | grammar_errors={kf.grammar_errors} | "
-            f"subconstructs={sc_summary}"
+            "New assessment | task=%s | wpm=%.1f | grammar_errors=%s | subconstructs=%s",
+            ispeak_output.task_type,
+            kf.wpm,
+            kf.grammar_errors,
+            sc_summary,
         )
 
         # Step 1: Build diagnostic profile
         profile = build_diagnostic_profile(ispeak_output)
 
         logger.info(
-            f"Profile built | overall={profile.overall_cefr.value} | "
-            f"gaps={profile.gap_skills}"
+            "Profile built | overall=%s | gaps=%s",
+            profile.overall_cefr.value,
+            profile.gap_skills,
         )
 
-        # return APIResponse(
-        #     success=True,
-        #     data={
-        #         "overall_cefr": profile.overall_cefr,
-        #         "gap_skills": profile.gap_skills,
-        #         "queries": profile.priority_queries,
-        #         "next_target": profile.next_target_cefr,
-        #     },
-        # )
-
-        # Step 2: RAG retrieval
+        # Step 2: RAG retrieval. A retrieval *failure* (connection/DB error) is
+        # distinct from "no matching chunks" and must not be silently treated as
+        # an empty knowledge base — we refuse to fabricate an ungrounded
+        # diagnosis. retrieve_all() raises RetrievalError on failure and returns
+        # [] only when there genuinely are no matches.
         chunks = retrieve_all(profile)
 
         if not chunks:
-            logger.warning(
-                "Retrieval mengembalikan 0 chunks. "
-                "Kemungkinan knowledge base belum diindex atau threshold terlalu tinggi."
-            )
-            # Lanjutkan dengan context kosong — LLM akan set insufficient_context=true
             context_str = "[Knowledge base tidak tersedia saat ini]"
+            logger.warning("Retrieval returned 0 chunks for this profile.")
         else:
             context_str = format_context_for_prompt(chunks)
 
@@ -90,27 +84,36 @@ async def assess(ispeak_output: ISpeakOutput) -> APIResponse:
         )
 
         logger.info(
-            f"Assessment selesai | "
-            f"hallucination_check={feedback.hallucination_check_passed} | "
-            f"sources={len(feedback.retrieval_sources)} | "
-            f"corrections={len(feedback.priority_corrections)}"
+            "Assessment selesai | hallucination_check=%s | sources=%s | corrections=%s",
+            feedback.hallucination_check_passed,
+            len(feedback.retrieval_sources),
+            len(feedback.priority_corrections),
         )
 
-        # ═══════════════════════════════════════════════════════════════════════
-        # STEP 4: Simpan sesi feedback ke store (feedback.py)
-        # ═══════════════════════════════════════════════════════════════════════
+        # Step 4: Store session, tagged with the caller's identity.
         session_id = _save_session(
-            feedback_response=feedback.model_dump(),
-            overall_cefr=profile.overall_cefr.value,  # enum → string
+            feedback_response=feedback,
+            overall_cefr=profile.overall_cefr.value,
             gap_skills=profile.gap_skills,
+            owner_id=requester.client_id,
         )
 
-        # Gabungkan feedback + session_id untuk response
         response_data = feedback.model_dump()
         response_data["session_id"] = session_id
 
         return APIResponse(success=True, data=response_data)
-    
-    except Exception as e:
-        logger.error(f"Assessment error: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+    except RetrievalError as e:
+        logger.error("Retrieval failure: %s", e)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Knowledge base tidak dapat diakses. Coba lagi nanti.",
+        )
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("Assessment error")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error.",
+        )

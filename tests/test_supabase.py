@@ -1,15 +1,24 @@
-# test_supabase.py
-from dotenv import load_dotenv
-load_dotenv()  # ← tambah ini, load .env dulu sebelum os.getenv
+"""
+Optional Supabase connectivity check.
 
-from supabase import create_client
+Skipped unless SUPABASE_URL and SUPABASE_KEY are provided. Never prints key
+material and never runs against live infrastructure during normal test runs.
+"""
+
 import os
 
-url = os.getenv("SUPABASE_URL")
-key = os.getenv("SUPABASE_KEY")
+import pytest
 
-print(f"URL: {url}")
-print(f"KEY: {key[:20]}..." if key else "KEY: None")
 
-client = create_client(url, key)
-print(client.table("documents").select("id").limit(1).execute())
+@pytest.mark.skipif(
+    not (os.getenv("SUPABASE_URL") and os.getenv("SUPABASE_KEY")),
+    reason="SUPABASE_URL/SUPABASE_KEY not set — skipping live Supabase check",
+)
+def test_supabase_connectivity():
+    from supabase import create_client
+
+    url = os.getenv("SUPABASE_URL")
+    key = os.getenv("SUPABASE_KEY")
+    client = create_client(url, key)
+    result = client.table("documents").select("id", count="exact").limit(1).execute()
+    assert result is not None

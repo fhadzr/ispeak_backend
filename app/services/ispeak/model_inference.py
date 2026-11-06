@@ -20,6 +20,60 @@ MODELS_DIR = Path(__file__).parent.parent.parent.parent / "models"
 CEFR_LABELS = ["A1", "A2", "B1", "B2", "C1", "C2"]
 
 
+def _sha256(path: Path) -> str:
+    import hashlib
+
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1024 * 1024), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def _load_manifest() -> dict:
+    """Return {filename: sha256} from models/MANIFEST.sha256, or {} if absent."""
+    manifest_path = MODELS_DIR / "MANIFEST.sha256"
+    if not manifest_path.exists():
+        return {}
+    entries = {}
+    for line in manifest_path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        parts = line.split()
+        if len(parts) == 2:
+            entries[parts[1]] = parts[0]
+    return entries
+
+
+def _verify_scaler(path: Path, manifest: dict) -> None:
+    """Verify a scaler .pkl against the checksum manifest before pickle.load.
+
+    If the manifest is absent (e.g. models added without regeneration), log a
+    warning and continue. If present but mismatched, refuse to load — pickle is
+    executable, and a mismatched file means the artifact changed.
+    """
+    if not manifest:
+        logger.warning(
+            "Manifest models/MANIFEST.sha256 tidak ditemukan; "
+            "skipping checksum verification untuk %s",
+            path.name,
+        )
+        return
+
+    expected = manifest.get(path.name)
+    if expected is None:
+        logger.warning("File %s tidak tercantum di manifest; skip verifikasi", path.name)
+        return
+
+    actual = _sha256(path)
+    if actual != expected:
+        raise RuntimeError(
+            f"Checksum mismatch untuk {path.name}: artifact model berubah "
+            "sejak manifest dibuat. Menolak deserialize pickle."
+        )
+
+
 class ISpeakModelLoader:
     _instance = None
     _models: dict = {}
@@ -71,12 +125,15 @@ class ISpeakModelLoader:
                 raise
 
         # ── Load scaler terpisah ──
+        manifest = _load_manifest()
         for name, fname in scaler_files.items():
             path = MODELS_DIR / fname
             if not path.exists():
                 logger.warning(f"Scaler {name} tidak ditemukan, skip")
                 continue
             try:
+                # Verify the pickle's checksum before deserializing it.
+                _verify_scaler(path, manifest)
                 with open(path, "rb") as f:
                     self._scalers[name] = pickle.load(f)
                 logger.info(f"✓ Scaler {name} dimuat")
@@ -204,15 +261,11 @@ async def run_ispeak_inference(
     alpha = [w.lower().strip(".,!?") for w in words if w.isalpha()]
     ttr = len(set(alpha)) / max(len(alpha), 1)
 
-    # Grammar errors
-    try:
-        import language_tool_python
+    # Grammar errors — via a process-wide LanguageTool singleton (no per-request
+    # Java subprocess spawn; availability is logged, not silently swallowed).
+    from .language_tool import check_grammar
 
-        tool = language_tool_python.LanguageTool("en-US")
-        grammar_errors = len(tool.check(transcript))
-        tool.close()
-    except Exception:
-        grammar_errors = 0
+    grammar_errors = check_grammar(transcript)
 
     IDIOM_LIST = {
         "on the other hand",

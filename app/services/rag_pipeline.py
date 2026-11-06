@@ -18,6 +18,15 @@ from app.core.config import get_settings
 logger = logging.getLogger(__name__)
 settings = get_settings()
 
+
+class RetrievalError(RuntimeError):
+    """Raised when the knowledge base cannot be reached or queried.
+
+    Distinct from "no matching chunks": an empty result is a legitimate
+    outcome, a failure is not, and callers must not conflate the two.
+    """
+
+
 # ─────────────────────────────────────────────
 # Singleton — load model sekali saja
 # ─────────────────────────────────────────────
@@ -30,10 +39,12 @@ def get_embedding_model():
     global _embedding_model
     if _embedding_model is None:
         logger.info("Loading embedding model...")
+        # NOTE: trust_remote_code is deliberately NOT set. The e5-large-instruct
+        # model loads without it; enabling it would allow arbitrary Python from
+        # the model repository to execute on this host.
         _embedding_model = SentenceTransformer(
-            "intfloat/multilingual-e5-large-instruct",
+            settings.embedding_model,
             device=_device,
-            trust_remote_code=True
         )
         logger.info("Embedding model ready.")
     return _embedding_model
@@ -80,7 +91,12 @@ def embed_query(query: str) -> list[float]:
 # Query Routing (OPTIMASI BARU)
 # ─────────────────────────────────────────────
 
-def detect_doc_type(query: str) -> str:
+def detect_doc_type(query: str) -> str | None:
+    """Route a query to a knowledge-base document type.
+
+    Returns ``None`` when the query does not match a known document type, so
+    the caller can search all types without applying a filter.
+    """
     query = query.lower()
 
     if "cefr" in query:
@@ -94,7 +110,7 @@ def detect_doc_type(query: str) -> str:
     elif "learning" in query or "exercise" in query:
         return "learning_path"
 
-    return "general"
+    return None
 
 
 # ─────────────────────────────────────────────
@@ -106,22 +122,28 @@ def retrieve_for_query(
     top_k: int | None = None,
     threshold: float | None = None,
 ) -> list[RetrievedChunk]:
-    """Retrieve top-K chunks dari Supabase untuk satu query."""
-    top_k = top_k or settings.top_k_retrieval
-    threshold = threshold or settings.similarity_threshold
+    """Retrieve top-K chunks dari Supabase untuk satu query.
 
-    embedding = embed_query(query)
-    supabase = get_supabase()
+    Raises :class:`RetrievalError` on any failure (embedding, Supabase
+    connection, or RPC). An empty list is returned only when the query
+    succeeds and genuinely matches nothing.
+    """
+    # Use ``is None`` so an explicit falsy value (0 / 0.0) is respected rather
+    # than silently replaced by the default.
+    top_k = settings.top_k_retrieval if top_k is None else top_k
+    threshold = settings.similarity_threshold if threshold is None else threshold
     doc_type = detect_doc_type(query)
 
     try:
+        embedding = embed_query(query)
+        supabase = get_supabase()
         result = supabase.rpc(
             "match_documents",
             {
                 "query_embedding": embedding,
                 "match_threshold": threshold,
                 "match_count": top_k,
-                "filter_doc_type": doc_type
+                "filter_doc_type": doc_type,
             }
         ).execute()
 
@@ -138,9 +160,18 @@ def retrieve_for_query(
             ))
         return chunks
 
+    except RetrievalError:
+        raise
     except Exception as e:
-        logger.error(f"Retrieval error — query: '{query[:50]}' | error: {e}")
-        return []
+        # Consistent failure signal. Log only the exception type and the query,
+        # never the raw exception text — connection errors can embed the
+        # Supabase URL or other sensitive detail.
+        logger.error(
+            "Retrieval error — query: '%s' | error_type=%s",
+            query[:50],
+            type(e).__name__,
+        )
+        raise RetrievalError("Knowledge base query failed.") from e
 
 
 # ─────────────────────────────────────────────
@@ -163,7 +194,10 @@ def retrieve_all(profile: DiagnosticProfile) -> list[RetrievedChunk]:
         chunks = retrieve_for_query(query)
 
         for chunk in chunks:
-            if doc_type != "general" and chunk.doc_type != doc_type:
+            # When the query maps to a specific doc_type, keep only matching
+            # chunks (defence in depth — the RPC already filtered). When
+            # doc_type is None, keep all doc types.
+            if doc_type is not None and chunk.doc_type != doc_type:
                 continue
 
             fp = chunk.content[:120].strip()
